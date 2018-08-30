@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+
+# This script is the runner for node replacements. It's designed to be used
+# fully automated. This script takes a cluster name as the single argument.
+# It assumes that the cluster has already been configured and that the user
+# is "dcos" and the password is in the DCOS_PASSWORD environment variable.
+
+#
+# decho <message>
+#
+# Echoes message to stdout
+function decho() { local readonly __message=${@}; echo "${__message}"; };
+
+#
+# die [message] [exit code]
+#
+# Outputs error message, then exits with the given exit code, or 1
+function die() { local readonly __code=${2:-1}; echo "[ERROR] ${1}" >&2; exit ${__code}; };
+
+#
+# runscript <script> [timeout]
+#
+# Runs a script in this directory, with back-off and timeout
+function runscript() {
+  local readonly __script=${1} __timeout=${2:-60} __bash=bash __backoff=0 __ret=0
+  [[ ${DEBUG} ]] && __bash+=" -x"
+  until ${__bash} $(pwd -P)/${__script} || [[ ${__backoff} -ge ${__timeout} ]]; do
+    sleep $(( __backoff++ ))
+  done
+  __ret=$?
+  if [[ ${__backoff} -ge ${__timeout} ]]; then
+    return 1
+  fi
+  return ${__ret}
+}
+
+# MAIN
+function main() {
+  local __id __node __orig_masters __orig_leader __orig_agents __orig_num_masters __orig_num_agents
+  local __result __ret __zones __zone __agents __check
+  # Enable debug output if DEBUG
+  [[ ${DEBUG} ]] && set -x
+  # Sanity
+  decho
+  decho "Starting replacement for $(dcos config show cluster.name) at $(date -u)"
+  decho
+  decho "Starting initial cluster sanity check"
+  for __check in cockroachdb leader master_snapshot zookeeper; do
+    runscript "dcos_sanity_check.sh ${__check}" || die "Failed polling for ${__check}"
+    decho "[x] ${__check} is healthy"
+  done
+  # Backup
+  ### TODO: uncomment
+  #decho "Starting DC/OS backup (Marathon state)"
+  #runscript dcos_backup.sh || die "Failed to backup Marathon state, code: ${?}" ${?}
+  #decho "[x] Backup successful"
+  # Save existing cluster state
+  __orig_masters=( $(runscript dcos_masters.sh) )
+  __orig_leader=$(runscript dcos_leader.sh)
+  __orig_agents=( $(runscript dcos_agents.sh) )
+  __orig_num_masters=${#__orig_masters[@]}
+  __orig_num_agents=${#__orig_agents[@]}
+  decho
+  decho "Original cluster"
+  decho "================"
+  decho "Masters: ${__orig_num_masters} (${__orig_masters[@]})"
+  decho "Leader: ${__orig_leader}"
+  decho "Agents: ${__orig_num_agents} (${__orig_agents[@]})"
+  decho
+  # Remove non-leader masters
+  decho "Replacing non-leader masters"
+  for __node in ${__orig_masters[@]}; do
+    if [[ ${__node} == ${__orig_leader} ]]; then
+      decho "Skipping ${__node} replacement, current leader"
+      continue # skip leader
+    fi
+    decho
+    decho "Replacing ${__node}"
+    runscript "aws_terminate.sh ${__node}" || die "Instance ${__node} failed to terminate within timeout"
+    decho "Waiting for new node to replace ${__node}"
+    runscript "dcos_wait_for.sh master ${__orig_num_masters}" || die "Failed waiting for ${__orig_num_masters} masters"
+    for __check in cockroachdb leader master_snapshot zookeeper; do
+      runscript "dcos_sanity_check.sh ${__check}" || die "Failed polling for ${__check}"
+      decho "[x] ${__check} is healthy"
+    done
+  done
+  decho
+  decho "Replacing ${__node} (leader)"
+  runscript "aws_terminate.sh ${__orig_leader}" || die "Instance ${__node} (leader) failed to terminate within timeout"
+  decho "Waiting for new node to replace ${__node}"
+  runscript "dcos_wait_for.sh master ${__orig_num_masters}"
+  for __check in cockroachdb leader master_snapshot zookeeper; do
+    runscript "dcos_sanity_check.sh ${__check}" || die "Failed polling for ${__check}"
+    decho "[x] ${__check} is healthy"
+  done
+  decho
+  decho "[x] Master nodes replaced"
+  decho
+  # Remove agents
+  decho "Fetching cluster zones for agents"
+  __zones=$(runscript dcos_cluster_zones.sh)
+  decho "Using these zones:"
+  decho "${__zones}"
+  decho
+  for __zone in ${__zones}; do
+    # Get list of agents in this zone
+    __agents=$(runscript "dcos_agents_by_zone.sh ${__zone}")
+    for __host in ${__agents}; do
+      decho "Terminating ${__host} in ${__zone}"
+      runscript "aws_terminate.sh ${__host}" || die "Instance ${__node} failed to terminate within timeout"
+      runscript "dcos_decommission_agent.sh ${__host}" || die "Failed decommission on ${__node}"
+    done
+    # Poll until new nodes are in agent list
+    decho "Polling for agents to rejoin cluster"
+    runscript "dcos_wait_for.sh agent ${__orig_num_agents}" || die "Failed waiting for ${__orig_num_agents} to rejoin cluster"
+    # Wait for agent registration
+    runscript "dcos_sanity_check.sh agent_snapshot" || die "Failed polling for agent_snapshot"
+    decho "[x] Zone ${__zone} completed"
+    decho
+  done
+  decho "Successfully replaced all nodes at $(date -u)"
+  decho
+  __new_masters=( $(runscript dcos_masters.sh) )
+  __new_leader=$(runscript dcos_leader.sh)
+  __new_agents=( $(runscript dcos_agents.sh) )
+  __new_num_masters=${#__new_masters[@]}
+  __new_num_agents=${#__new_agents[@]}
+  decho
+  decho "New cluster"
+  decho "================"
+  decho "Masters: ${__new_num_masters} (${__new_masters[@]})"
+  decho "Leader: ${__new_leader}"
+  decho "Agents: ${__new_num_agents} (${__new_agents[@]})"
+  decho
+}
+
+# do MAIN
+main
