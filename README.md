@@ -1,4 +1,6 @@
 # README
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FApplauseOSS%2Fdcos-node-replacement.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FApplauseOSS%2Fdcos-node-replacement?ref=badge_shield)
+
 
 This repository contains scripts to perform a node replacement on a DC/OS
 cluster. It uses the `dcos` CLI tool to communicate with a DC/OS cluster
@@ -53,3 +55,7 @@ export DCOS_PASSWORD=<password>
 * For each IP: `aws_terminate.sh` <ip>
 * Wait for agents up using `dcos_agents_by_zone.sh <zone>`
 
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FApplauseOSS%2Fdcos-node-replacement.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FApplauseOSS%2Fdcos-node-replacement?ref=badge_large)
