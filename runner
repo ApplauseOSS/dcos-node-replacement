@@ -40,13 +40,13 @@ function main() {
   local __result __ret __zones __zone __agents __check
   # Enable debug output if DEBUG
   [[ ${DEBUG} ]] && set -x
-  # Sanity
   decho
   decho "Starting replacement for $(dcos config show cluster.name) at $(date -u)"
   decho
+  # Sanity
   decho "Starting initial cluster sanity check"
   for __check in cockroachdb leader master_snapshot zookeeper; do
-    runscript "dcos_sanity_check.sh ${__check}" || die "Failed polling for ${__check}"
+    runscript "dcos_sanity_check.sh ${__check}" 300 || die "Failed polling for ${__check}"
     decho "[x] ${__check} is healthy"
   done
   # Backup
@@ -75,22 +75,24 @@ function main() {
       continue # skip leader
     fi
     decho
-    decho "Replacing ${__node}"
+    decho "Replacing ${__node} at $(date -u)"
     runscript "aws_terminate.sh ${__node}" || die "Instance ${__node} failed to terminate within timeout"
     decho "Waiting for new node to replace ${__node}"
     runscript "dcos_wait_for.sh master ${__orig_num_masters}" || die "Failed waiting for ${__orig_num_masters} masters"
+    decho "Waiting for services to settle"
     for __check in cockroachdb leader master_snapshot zookeeper; do
-      runscript "dcos_sanity_check.sh ${__check}" || die "Failed polling for ${__check}"
+      runscript "dcos_sanity_check.sh ${__check}" 300 || die "Failed polling for ${__check}"
       decho "[x] ${__check} is healthy"
     done
   done
   decho
-  decho "Replacing ${__node} (leader)"
+  decho "Replacing ${__node} (leader) at $(date -u)"
   runscript "aws_terminate.sh ${__orig_leader}" || die "Instance ${__node} (leader) failed to terminate within timeout"
   decho "Waiting for new node to replace ${__node}"
   runscript "dcos_wait_for.sh master ${__orig_num_masters}"
+  decho "Waiting for services to settle"
   for __check in cockroachdb leader master_snapshot zookeeper; do
-    runscript "dcos_sanity_check.sh ${__check}" || die "Failed polling for ${__check}"
+    runscript "dcos_sanity_check.sh ${__check}" 300 || die "Failed polling for ${__check}"
     decho "[x] ${__check} is healthy"
   done
   decho
@@ -106,7 +108,7 @@ function main() {
     # Get list of agents in this zone
     __agents=$(runscript "dcos_agents_by_zone.sh ${__zone}")
     for __host in ${__agents}; do
-      decho "Terminating ${__host} in ${__zone}"
+      decho "Terminating ${__host} in ${__zone} at $(date -u)"
       runscript "aws_terminate.sh ${__host}" || die "Instance ${__node} failed to terminate within timeout"
       runscript "dcos_decommission_agent.sh ${__host}" || die "Failed decommission on ${__node}"
     done
@@ -115,6 +117,10 @@ function main() {
     runscript "dcos_wait_for.sh agent ${__orig_num_agents}" || die "Failed waiting for ${__orig_num_agents} to rejoin cluster"
     # Wait for agent registration
     runscript "dcos_sanity_check.sh agent_snapshot" || die "Failed polling for agent_snapshot"
+    # HDFS
+    decho "Replacing HDFS pods (if necessary)"
+    runscript "dcos_hdfs.sh" 3600 || die "Failed to replace HDFS pods"
+    decho
     decho "[x] Zone ${__zone} completed"
     decho
   done
