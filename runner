@@ -46,7 +46,7 @@ function main() {
   decho
   decho "Starting initial cluster sanity check"
   for __check in cockroachdb leader master_snapshot zookeeper; do
-    runscript "dcos_sanity_check.sh ${__check}" || die "Failed polling for ${__check}"
+    runscript "dcos_sanity_check.sh ${__check}" 300 || die "Failed polling for ${__check}"
     decho "[x] ${__check} is healthy"
   done
   # Backup
@@ -80,7 +80,7 @@ function main() {
     decho "Waiting for new node to replace ${__node}"
     runscript "dcos_wait_for.sh master ${__orig_num_masters}" || die "Failed waiting for ${__orig_num_masters} masters"
     for __check in cockroachdb leader master_snapshot zookeeper; do
-      runscript "dcos_sanity_check.sh ${__check}" || die "Failed polling for ${__check}"
+      runscript "dcos_sanity_check.sh ${__check}" 300 || die "Failed polling for ${__check}"
       decho "[x] ${__check} is healthy"
     done
   done
@@ -90,7 +90,7 @@ function main() {
   decho "Waiting for new node to replace ${__node}"
   runscript "dcos_wait_for.sh master ${__orig_num_masters}"
   for __check in cockroachdb leader master_snapshot zookeeper; do
-    runscript "dcos_sanity_check.sh ${__check}" || die "Failed polling for ${__check}"
+    runscript "dcos_sanity_check.sh ${__check}" 300 || die "Failed polling for ${__check}"
     decho "[x] ${__check} is healthy"
   done
   decho
