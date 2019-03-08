@@ -69,6 +69,8 @@ function main() {
   decho
   # Remove non-leader masters
   decho "Replacing non-leader masters"
+  # Enable waiting for termination
+  export AWS_TERMINATE_WAIT=true
   for __node in ${__orig_masters[@]}; do
     if [[ ${__node} == ${__orig_leader} ]]; then
       decho "Skipping ${__node} replacement, current leader"
@@ -96,6 +98,8 @@ function main() {
   decho
   decho "[x] Master nodes replaced"
   decho
+  # Disable waiting for termination
+  unset AWS_TERMINATE_WAIT
   # Remove agents
   decho "Fetching cluster zones for agents"
   __zones=$(runscript dcos_cluster_zones.sh)
