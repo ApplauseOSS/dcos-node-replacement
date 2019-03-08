@@ -57,10 +57,10 @@ function aws_terminate() {
   elif [[ ${__ret} -ne 0 ]]; then
     return ${__ret}
   fi
-  if [[ ${DEBUG} ]]; then
+  if [[ ${AWS_TERMINATE_WAIT} ]]; then
     aws_until_state terminated ${__id} ${__timeout} || return $?
   else
-    sleep 3 # slight sleep to reduce errors
+    sleep 3 # slight wait between nodes
   fi
   return
 }
