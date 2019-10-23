@@ -8,7 +8,7 @@ export DCOS_PASSWORD=${DCOS_PASSWORD}
 #
 # Fetches the dcos CLI
 function dcos_cli_install() {
-  local readonly __version=${1:-1.11}
+  local readonly __version=${1:-1.12}
   local __os
   if [[ $(type -P dcos) ]]; then
     return 0
@@ -32,7 +32,7 @@ function dcos_cli_install() {
 function dcos_cluster_setup() {
   local readonly __master=${1}
   dcos_cli_install || return 1
-  dcos cluster setup ${__master} --no-check --username=${DCOS_USERNAME} --password-env=DCOS_PASSWORD
+  dcos cluster setup ${__master} --no-check --username=${DCOS_USERNAME} --password=${DCOS_PASSWORD}
 }
 
 dcos_cluster_setup ${@}
